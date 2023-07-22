@@ -1,253 +1,288 @@
-import random
-from gmssl import sm3
+from random import choice
+from gmssl import sm3,func
+#根据SM2椭圆曲线公钥密码算法推荐曲线参数进行初始化
+#椭圆曲线方程:y^2=x^3+a*x+b
+a=int('FFFFFFFEFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00000000FFFFFFFFFFFFFFFC',16)
+b=int('28E9FA9E9D9F5E344D5A9E4BCF6509A7F39789F515AB8F92DDBCBD414D940E93',16)
+p=int('FFFFFFFEFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00000000FFFFFFFFFFFFFFFF',16)
+n=int('FFFFFFFEFFFFFFFFFFFFFFFFFFFFFFFF7203DF6B21C6052B53BBF40939D54123',16)
+#密钥对生成
 
+#随机产生字符串,OK
+def random_string(strlen):
+    letterlist=['0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F']
+    strl=""
+    for i in range(strlen):
+        temp=choice(letterlist)
+        strl+=temp
+    return strl
+#椭圆曲线点的计算
 
-#SM3推荐参数：secp256r1
-p=0x8542D69E4C044F18E8B92435BF6FF7DE457283915C45517D722EDB8B08F1DFC3
-a=0x787968B4FA32C3FD2417842E73BBFEFF2F3C848B6831D7E0EC65228B3937E498
-
-b=0x63E4C6D3B23B0C849CF84241484BFE48F61D59A5B16BA06E6E12D1DA27C5249A
-n=0x8542D69E4C044F18E8B92435BF6FF7DD297720630485628D5AE74EE7C32E79B7
-Gx=0x421DEBD61B62EAB6746434EBC3CC315E32220B3BADD50BDC4C4E6C147FEDD43D
-Gy=0x0680512BCBB42C07D47349D2153B70C4E5D7FDFCBFA36EA1A85841B9E46E09A2
-
-#print(hashlib.sha1("123".encode()).hexdigest())
-
-def show_points(p, a, b):
-    return [(x, y) for x in range(p) for y in range(p) if (y * y - (x * x * x + a * x + b)) % p == 0]
-
-
-def GCD(a, b):
-    if b == 0:
-        return a
+#倍点,OK
+def doublepoint(point,length):
+    l=len(point)
+    len_2=2*length
+    if l<len_2:
+        return None
     else:
-        return GCD(b, a % b)
+        x1=int(point[0:length],16)
+        y1=int(point[length:len_2],16)
+        if l==len_2:
+            z1=1
+        else:
+            z1=int(point[len_2:],16)
+        T6=(z1*z1)%p
+        T2=(y1*y1)%p
+        T3=(x1+T6)%p
+        T4=(x1-T6)%p
+        T1=(T3*T4)%p
+        T3=(y1*z1)%p
+        T4=(T2*8)%p
+        T5=(x1*T4)%p
+        T1=(T1*3)%p
+        T6=(T6*T6)%p
+        T6=(((a+3)%p)*T6)%p
+        T1=(T1+T6)%p
+        z3=(T3+T3)%p
+        T3=(T1*T1)%p
+        T2=(T2*T4)%p
+        x3=(T3-T5)%p
+        if (T5%2)==1:
+            T4=(T5+((T5+p)>>1)-T3)%p
+        else:
+            T4=(T5+(T5>>1)-T3)%p
+        T1=(T1*T4)%p
+        y3=(T1-T2)%p
+        form='%%0%dx'%length
+        form=form*3
+        return form%(x3,y3,z3)
 
-
-def XGCD(a, b):
-    if (b == 0):
-        return 1, 0, a
+#点加,OK
+def addpoint(p1,p2,length):
+    len_2=2*length
+    l1=len(p1)
+    l2=len(p2)
+    if (l1<len_2) or (l2<len_2):
+        return None
     else:
-        x, y, d = XGCD(b, a % b)
-        return y, (x - (a // b) * y), d
+        x1=int(p1[0:length],16)
+        y1=int(p1[length:len_2],16)
+        if (l1==len_2):
+            z1=1
+        else:
+            z1=int(p1[len_2:],16)
+        x2=int(p2[0:length],16)
+        y2=int(p2[length:len_2],16)
+        T1=(z1*z1)%p
+        T2=(y2*z1)%p
+        T3=(x2*T1)%p
+        T1=(T1*T2)%p
+        T2=(T3-x1)%p
+        T3=(T3+x1)%p
+        T4=(T2*T2)%p
+        T1=(T1-y1)%p
+        z3=(z1*T2)%p
+        T2=(T2*T4)%p
+        T3=(T3*T4)%p
+        T5=(T1*T1)%p
+        T4=(x1*T4)%p
+        x3=(T5-T3)%p
+        T2=(y1*T2)%p
+        T3=(T4-x3)%p
+        T1=(T1*T3)%p
+        y3=(T1-T2)%p
+        form='%%0%dx'%length
+        form=form*3
+        return form%(x3,y3,z3)
 
-
-# print(XGCD(6553215,5754840))
-
-def get_inverse(a, b):
-    return XGCD(a, b)[0] % b
-
-
-def pow_mod(a, b, n):
-    a = a % n
-    ans = 1
-    # 这里我们不需要考虑b<0，因为分数没有取模运算
-    while b != 0:
-        if b & 1:
-            ans = (ans * a) % n
-        b >>= 1
-        a = (a * a) % n
-    return ans
-
-
-def get_miller(m):
-    while (m % 2 == 0):
-        m = m // 2
-    return m
-
-
-def rabin_miller(p):
-    if p == 2:
-        return True
-    elif p % 2 == 0:
-        return False
+#Jacobian加重射影坐标转换成仿射坐标,OK
+def convertJacb2Nor(point,length):
+    len_2=length*2
+    x=int(point[0:length],16)
+    y=int(point[length:len_2],16)
+    z=int(point[len_2:],16)
+    z_inv=pow(z,p-2,p)
+    z_invSquar=(z_inv*z_inv)%p
+    z_invQube=(z_invSquar*z_inv)%p
+    x_new=(x*z_invSquar)%p
+    y_new=(y*z_invQube)%p
+    z_new=(z*z_inv)%p
+    if z_new==1:
+        form='%%0%dx'%length
+        form=form*2
+        return form%(x_new,y_new)
     else:
-        m = p - 1
-        m = get_miller(m)
-        the_pow_mod = pow_mod(2, m, p)
-        if the_pow_mod == 1:
-            return True
-        a = m
-
-        while (a <= p - 1):
-            the_pow_mod = the_pow_mod ** 2 % p
-            if the_pow_mod == 1:
-                return True
-            a = a * 2
-        return False
-
-
-# 求最大公约数——用于约分化简
-def get_gcd(x, y):
-    if y == 0:
-        return x
-    else:
-        return get_gcd(y, x % y)
-
-    # 计算P+Q函数
-
-
-
-def get_Qr(n,p):
-    # 求勒让德符号
-    def Legender(a, p):
-        return pow_mod(a, (p - 1) >> 1, p)
-
-    class T:
-        p = 0
-        d = 0
-
-    w = 0
-
-    def multi_er(a, b, m):
-        ans = T()
-        ans.p = (a.p * b.p % m + a.d * b.d % m * w % m) % m
-        ans.d = (a.p * b.d % m + a.d * b.p % m) % m
-        return ans
-
-    def power(a, b, m):
-        ans = T()
-        ans.p = 1
-        ans.d = 0
-        while b:
-            if b & 1:
-                ans = multi_er(ans, a, m);
-                b -= 1
-            b >>= 1
-            a = multi_er(a, a, m)
-        return ans
-    a=0
-    t=0
-    while True:
-        a=random.randrange(1,p)
-        t= a*a-n
-        w = t%p
-        if Legender(w,p)+1==p:
-            break
-    tmp=T()
-    tmp.p = a
-    tmp.d = 1
-    ans = power(tmp, (p + 1) >> 1, p)
-    return ans.p,p-ans.p
-
-def calculate_p_q(x1, y1, x2, y2, a, b, p):
-    flag = 1  # 控制符号位
-
-    # 若P = Q，则k=[(3x1^2+a)/2y1]mod p
-    if x1 == x2 and y1 == y2:
-        member = 3 * (x1 ** 2) + a  # 计算分子
-        denominator = 2 * y1  # 计算分母
-
-    # 若P≠Q，则k=(y2-y1)/(x2-x1) mod p
-    else:
-        member = y2 - y1
-        denominator = x2 - x1
-        if member * denominator < 0:
-            flag = 0
-            member = abs(member)
-            denominator = abs(denominator)
-
-    # 将分子和分母化为最简
-    gcd_value = get_gcd(member, denominator)
-    member = member // gcd_value
-    denominator = denominator // gcd_value
-
-    # 求分母的逆元
-    inverse_value = get_inverse(denominator, p)
-    k = (member * inverse_value)
-    if flag == 0:
-        k = -k
-    k = k % p
-
-    # 计算x3,y3
-    """
-        x3≡k^2-x1-x2(mod p)
-        y3≡k(x1-x3)-y1(mod p)
-    """
-    x3 = (k ** 2 - x1 - x2) % p
-    y3 = (k * (x1 - x3) - y1) % p
-    return [x3, y3]
-
-
-# 计算2P函数
-def calculate_2p(p_x, p_y, a, b, p):
-    tem_x = p_x
-    tem_y = p_y
-    p_value = calculate_p_q(tem_x, tem_y, p_x, p_y, a, b, p)
-    tem_x = p_value[0]
-    tem_y = p_value[1]
-    return p_value
-
-
-# 计算nP函数
-def calculate_np(p_x, p_y, n, a, b, p):
-    p_value = ["0", "0"]
-    p_temp = [0, 0]
-    # 这里我们不需要考虑b<0，因为分数没有取模运算
-    while n != 0:
-        if n & 1:
-            if (p_value[0] == "0" and p_value[1] == "0"):
-                p_value[0], p_value[1] = p_x, p_y
+        print("point at infinity!!!")
+        return None
+    '''form='%%0%dx'%length
+    form=form*2
+    return form%(x_new,y_new)'''
+    
+#kp,点乘,OK
+def kp(k,point,length):
+    point='%s%s'%(point,'1')
+    #print("point",point)
+    mask_str='8'
+    for i in range(length-1):
+        mask_str+='0'
+    #print("mask_str",mask_str)
+    mask=int(mask_str,16)
+    temp=point
+    flag=False
+    for n in range(length*4):
+        if (flag):
+            temp=doublepoint(temp,length)
+        if (k&mask)!=0:
+            if(flag):
+                temp=addpoint(temp,point,length)
             else:
-                p_value = calculate_p_q(p_value[0], p_value[1], p_x, p_y, a, b, p)
-        n >>= 1
-        p_temp = calculate_2p(p_x, p_y, a, b, p)
-        p_x, p_y = p_temp[0], p_temp[1]
-    return p_value
+                flag=True
+                temp=point
+        k=k<<1
+    return convertJacb2Nor(temp,length)    
+#签名算法
+#十六进制转换为byte数组
+def hex_byte(msg):
+    ml=len(msg)
+    if ml%2!=0:
+        msg='0'+msg
+    ml=int(len(msg)/2)
+    msg_byte=[]
+    for i in range(ml):
+        msg_byte.append(int(msg[i*2:i*2+2],16))
+    return msg_byte
+#预处理1,计算z值
+def pre1(PA):
+    data='001031323334353637383132333435363738'
+    data+=str(a)
+    data+=str(b)
+    data+=Q
+    data+=PA
+    #print("data",data)
+    data_byte=hex_byte(data)
+    return sm3.sm3_hash(data_byte)
+#预处理2,得到杂凑值H,z：z值  m:消息
+def pre2(z,m):
+    data=z+m
+    data_byte=hex_byte(data)
+    return sm3.sm3_hash(data_byte)
+#生成签名，E:消息的hash值，dA:签名者的私钥，K：随机数
+def sign(E,dA,K,length,hexstr=0):
+    if hexstr:
+        e=int(E,16)
+    else:
+        E=E.encode('utf-8')
+        E=E.hex()
+        e=int(E,16)
+    d=int(dA,16)
+    k=int(K,16)
+    p1=kp(k,Q,length)
+    x=int(p1[0:length],16)
+    R=((e+x)%n)
+    if R==0 or R+k==n:
+        return None
+    d_1=pow(d+1,n-2,n)
+    S=(d_1*(k+R)-R)%n
+    if S==0:
+        return None
+    else:
+        return '%064x%064x'%(R,S)
+#验证签名,sign：签名R||S,E:消息的hash值，PA：公钥
+def verify(sign,E,PA,length):
+    r=int(sign[0:length],16)
+    s=int(sign[length:2*length],16)
+    e=int(E,16)
+    t=(r+s)%n
+    if t==0:
+        return None
+    p1=kp(s,Q,length)
+    p2=kp(t,PA,length)
+    if p1==p2:
+        p1='%s%s'%(p1,1)
+        p1=doublepoint(p1,length)
+    else:
+        p1='%s%s'%(p1,1)
+        p1=addpoint(p1,p2,length)
+        p1=convertJacb2Nor(p1,length)
+    x=int(p1[0:length],16)
+    return (r==((e+x)%n))
+#加解密
+#加密,m:消息，PA:公钥
+def encrypt(m,PA,length,hexstr=0):
+    if hexstr:
+        message=m
+    else:
+        message=m.encode('utf-8')
+        message=message.hex()
+    k=random_string(length)
+    #计算C1
+    C1=kp(int(k,16),Q,length)
+    xy=kp(int(k,16),PA,length)
+    x2=xy[0:length]
+    y2=xy[length:length*2]
+    ml=len(message)
+    #计算t
+    XY=xy.encode('utf8')
+    t=sm3.sm3_kdf(XY,ml/2)
+    if int(t,16)==0:
+        return None
+    else:
+        form='%%0%dx'%ml
+        C2=form%(int(message,16)^int(t,16))
+        data=x2+message+y2
+        data_byte=hex_byte(data)
+        C3=sm3.sm3_hash(data_byte)
+        return '%s%s%s'%(C1,C3,C2)
+#解密,C：密文，DA:私钥
+def decrypt(C,DA,length):
+    len_2=2*length
+    len_3=len_2+64
+    C1=C[0:len_2]
+    C3=C[len_2:len_3]
+    C2=C[len_3:]
+    xy=kp(int(DA,16),C1,length)
+    x2=xy[0:length]
+    y2=xy[length:len_2]
+    cl=len(C2)
+    XY=xy.encode('utf8')
+    t=sm3.sm3_kdf(XY,cl/2)
+    if int(t,16)==0:
+        return None
+    else:
+        form='%%0%dx'% cl
+        m=form%(int(C2,16)^int(t,16))
+        data=x2+m+y2
+        data_byte=hex_byte(data)
+        u=sm3.sm3_hash(data_byte)
+        if (u==C3):
+            return m
+        else:
+            return None
 
-def calculate_Tp(p_x, p_y,a, b, p):
-    return p_x,p-p_y
-
-def get_key():
-    dA=random.randrange(0,n)
-    PA=calculate_np(Gx, Gy, dA, a, b, p)
-    return dA,PA
-
-def get_bitsize(num):
-    len=0
-    while num/256:
-        len+=1
-        num=int (num/256)
-    return len
-
-def int_to_bytes(num):
-    return num.to_bytes(get_bitsize(num),byteorder='big', signed=False)
-def bytes_to_int(bytes):
-    return int.from_bytes(bytes,byteorder='big')
-
-IDA=0x414C494345313233405941484F4F2E434F4D
-IDB=0x414C4943453132334414C4943453132334
-msg="message digest"
-
-#将K的生成和私钥，ID，所使用的算法相关联
-def sign_with_RFC6979(msg,ID):
-    def RFC6979(num):
-        return int(sm3.sm3_hash(list(num)),16)
-
-    M=msg.encode()
-    dA, PA= get_key()
-    ENTL=get_bitsize(ID)*8
-    data = ENTL.to_bytes(2,byteorder='big', signed=False)+int_to_bytes(ID)+int_to_bytes(a)+int_to_bytes(b)+int_to_bytes(Gx)+int_to_bytes(Gy)+int_to_bytes(PA[0])+int_to_bytes(PA[1])
-    ZA = int(sm3.sm3_hash(list(data)),16)
-    M_=int_to_bytes(ZA)+M
-    e=int(sm3.sm3_hash(list(M_)),16)
-    r=0
-    s=0
-    num=int_to_bytes(dA)+int_to_bytes(ID)+"sm3".encode()
-    print("k的输入为：")
-    print(num)
-    k=RFC6979(num)%n
-    print("获得的k为:")
-    print(k)
-    while 1:
-        x1,y1=calculate_np(Gx, Gy, k, a, b, p)
-        r=(e+x1)%n
-        s=(get_inverse(1+dA,n)*(k-r*dA))%n
-        if s!=0 and r!=0 and r+k != n :
-            k=(k+1)%n
-            break
-    print("获得的签名为：")
-    return r,s
-
-
-print(sign_with_RFC6979(msg,IDA))
+if __name__=='__main__':
+    length=int(64)
+    #d:SM2私钥,256bits
+    #Q:SM2公钥,基点G：x||y
+    d=random_string(length)
+    Q='32C4AE2C1F1981195F9904466A39C9948FE30BBFF2660BE1715A4589334C74C7BC3736A2F4F6779C59BDCEE36B692153D0A9877CC62A474002DF32E52139F0A0'
+    #k:随机数
+    #print("length",length)
+    k=random_string(length)
+    #print("k:",k)
+    Pa=kp(int(d,16),Q,length)
+    #print("Pa:",Pa)
+    z1=pre1(Pa)
+    print("z1:",z1)
+    m='665165adbcfe5'
+    hash_M=pre2(z1,m)
+    print("hash_M：",hash_M)
+    sig=sign(hash_M,d,k,length,1)
+    print("sig:",sig)
+    print(verify(sig,hash_M,Pa,length))
+    C=encrypt(m,Pa,length,1)
+    print('C:',C)
+    M=decrypt(C,d,length)
+    print("M:",M)
+    
+    
+                    
